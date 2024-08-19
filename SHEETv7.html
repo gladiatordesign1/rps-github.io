@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPS Organizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>RPS Organizer</h1>
+    <textarea id="inputText" rows="10" cols="80" placeholder="Paste your subjects here..."></textarea><br><br>
+    
+    <button onclick="parseLogs()" class="pushable">
+        <span class="shadow"></span>
+        <span class="edge"></span>
+        <span class="front">
+            EXTRACT
+        </span>
+    </button>
+    <br><br>
+    <textarea id="outputText" rows="10" cols="80" readonly placeholder="Parsed results will appear here..."></textarea><br>
+    
+    <textarea id="searchResult" rows="5" cols="80" readonly placeholder="Search results will appear here..."></textarea><br><br>
+    
+    <label for="searchInput">Search IP or Server ID:</label>
+    <input type="text" id="searchInput">
+    <button onclick="searchLog()" class="pushable">
+        <span class="shadow"></span>
+        <span class="edge"></span>
+        <span class="front">
+            SEARCH
+        </span>
+    </button>
+    <br><br>
+        <div id="ipCountDisplay"></div>
+
+    <h2>Statistique</h2>
+    <table id="summaryTable" border="1">
+        <thead>
+            <tr>
+                <th>Server ID</th>
+                <th>Count</th>
+                <th>Return-Path</th>
+                <th>Count</th>
+                <th>IP</th>
+                <th>Count</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        let domainCount = {};
+        let ipCount = {};
+
+        function parseLogs() {
+            const inputText = document.getElementById('inputText').value;
+            const lines = inputText.trim().split('\n');
+            const serverDict = {};
+            const serverCount = {};
+            ipCount = {};
+            domainCount = {};
+
+            lines.forEach(line => {
+                const ipMatch = line.match(/\[([\d\.]+)\]/);
+                const tagMatch = line.match(/\b(vps|abs)\d+\b/);
+                const domainMatch = line.match(/\b\S+\.\S+\b/);
+                
+                if (ipMatch && tagMatch && domainMatch) {
+                    const ip = ipMatch[1];
+                    const tag = tagMatch[0];
+                    const domain = domainMatch[0].replace("Subject: ", ""); // Remove "Subject: " if present
+
+                    // Populate serverDict
+                    if (!serverDict[tag]) {
+                        serverDict[tag] = {};
+                    }
+                    if (!serverDict[tag][ip]) {
+                        serverDict[tag][ip] = [];
+                    }
+                    serverDict[tag][ip].push(domain);
+
+                    // Count server IDs
+                    if (!serverCount[tag]) {
+                        serverCount[tag] = 0;
+                    }
+                    serverCount[tag]++;
+
+                    // Count IPs
+                    if (!ipCount[ip]) {
+                        ipCount[ip] = 0;
+                    }
+                    ipCount[ip]++;
+
+                    // Count domains
+                    if (!domainCount[domain]) {
+                        domainCount[domain] = 0;
+                    }
+                    domainCount[domain]++;
+                }
+            });
+
+            // Format and display parsed results
+            let result = '';
+            for (const [tag, ips] of Object.entries(serverDict)) {
+                result += `${tag}\n`;
+                for (const [ip, domains] of Object.entries(ips)) {
+                    result += `${ip}\n`;
+                    domains.forEach(domain => {
+                        result += `${domain}\n`;
+                    });
+                }
+                result += '---------\n';
+            }
+            document.getElementById('outputText').value = result.trim();
+
+            // Format and display summary in table
+            const summaryTableBody = document.getElementById('summaryTable').getElementsByTagName('tbody')[0];
+            summaryTableBody.innerHTML = ''; // Clear previous results
+
+            const sortedServerCount = Object.entries(serverCount).sort((a, b) => b[1] - a[1]);
+            const sortedIpCount = Object.entries(ipCount).sort((a, b) => b[1] - a[1]);
+            const sortedDomainCount = Object.entries(domainCount).sort((a, b) => b[1] - a[1]);
+
+            const maxLength = Math.max(sortedServerCount.length, sortedIpCount.length, sortedDomainCount.length);
+            for (let i = 0; i < maxLength; i++) {
+                const server = sortedServerCount[i] ? sortedServerCount[i][0] : '';
+                const serverCount = sortedServerCount[i] ? sortedServerCount[i][1] : '';
+                const domain = sortedDomainCount[i] ? sortedDomainCount[i][0] : '';
+                const domainCount = sortedDomainCount[i] ? sortedDomainCount[i][1] : '';
+                const ip = sortedIpCount[i] ? sortedIpCount[i][0] : '';
+                const ipCount = sortedIpCount[i] ? sortedIpCount[i][1] : '';
+
+                const row = summaryTableBody.insertRow();
+                row.insertCell(0).innerText = server;
+                row.insertCell(1).innerText = serverCount;
+                row.insertCell(2).innerText = domain;
+                row.insertCell(3).innerText = domainCount;
+                row.insertCell(4).innerText = ip;
+                row.insertCell(5).innerText = ipCount;
+            }
+        }
+
+        function searchLog() {
+            const searchInput = document.getElementById('searchInput').value.trim();
+            const lines = document.getElementById('inputText').value.trim().split('\n');
+            let result = '';
+
+            // Check if searchInput is an IP or a server ID
+            const isIP = searchInput.match(/^[\d\.]+$/); // Check if searchInput is an IP address
+            const isServerID = searchInput.match(/^\b(vps|abs)\d+\b/); // Check if searchInput is a server ID
+
+            if (isIP) {
+                // Search by IP
+                const ipResults = {};
+
+                lines.forEach(line => {
+                    const ipMatch = line.match(/\[([\d\.]+)\]/);
+                    const tagMatch = line.match(/\b(vps|abs)\d+\b/);
+                    const domainMatch = line.match(/\b\S+\.\S+\b/);
+
+                    if (ipMatch && ipMatch[1] === searchInput && tagMatch && domainMatch) {
+                        const tag = tagMatch[0];
+                        const domain = domainMatch[0].replace("Subject: ", ""); // Remove "Subject: " if present
+                        if (!ipResults[tag]) {
+                            ipResults[tag] = [];
+                        }
+                        ipResults[tag].push(domain);
+                    }
+                });
+
+                for (const [tag, domains] of Object.entries(ipResults)) {
+                    result += `${tag}\n--------\n`;
+                    const sortedDomains = domains.sort((a, b) => domainCount[b] - domainCount[a]);
+                    sortedDomains.forEach(domain => {
+                        result += `${domain}\n`;
+                    });
+                }
+
+                // Display IP count
+                const ipCountDisplay = document.getElementById('ipCountDisplay');
+                ipCountDisplay.innerText = `Count: ${ipCount[searchInput] || 0}`;
+
+            } else if (isServerID) {
+                // Search by server ID
+                const serverDict = {};
+
+                lines.forEach(line => {
+                    const ipMatch = line.match(/\[([\d\.]+)\]/);
+                    const tagMatch = line.match(/\b(vps|abs)\d+\b/);
+                    const domainMatch = line.match(/\b\S+\.\S+\b/);
+
+                    if (ipMatch && tagMatch && domainMatch) {
+                        const ip = ipMatch[1];
+                        const tag = tagMatch[0];
+                        const domain = domainMatch[0].replace("Subject: ", ""); // Remove "Subject: " if present
+
+                        if (tag === searchInput) {
+                            if (!serverDict[ip]) {
+                                serverDict[ip] = [];
+                            }
+                            serverDict[ip].push(domain);
+                        }
+                    }
+                });
+
+                result = `${searchInput}\n\n`;
+
+                for (const [ip, domains] of Object.entries(serverDict)) {
+                    result += `${ip}\n`;
+                    const sortedDomains = domains.sort((a, b) => domainCount[b] - domainCount[a]);
+                    sortedDomains.forEach(domain => {
+                        result += `${domain}\n`;
+                    });
+                    result += '\n';
+                }
+            }
+
+            document.getElementById('searchResult').value = result.trim();
+        }
+    </script>
+</body>
+</html>
